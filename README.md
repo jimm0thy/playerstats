@@ -1,16 +1,18 @@
 # playerstats
 
-An [Ashita v4](https://www.ashitaxi.com/) addon for Final Fantasy XI that keeps your job, level, gil and experience on screen in a small, movable box.
+An [Ashita v4](https://www.ashitaxi.com/) addon for Final Fantasy XI that keeps your job, level, gil, experience and location on screen in a small, movable box.
 
 ```
-Job   RDM 10
-Gil      163
-EXP  376 / 2,600
+Job                     RDM 10
+Gil                        163
+EXP                376 / 2,600
+Zone   Windurst Walls | H-7
 ```
 
 - **Job** shows your main job and level, plus your support job and level when one is set (`WAR 37 / NIN 18`).
 - **Gil** is your current gil, with thousands separators.
 - **EXP** is your current experience and the amount needed for the next level.
+- **Zone** is the zone you're in and the map grid square you're standing in, the same letter-number square the in-game map shows. You can hide this row (see [Zone and grid square](#zone-and-grid-square)).
 
 The box can be dragged anywhere with the mouse, hides itself while you zone, and comes with four themes that you can customize with chat commands.
 
@@ -35,11 +37,23 @@ The box hides while you zone and stays hidden for a few seconds after you arrive
 
 The box is also hidden at the character select screen.
 
+## Zone and grid square
+
+The Zone row shows the zone name and your square on the zone's map, for example `Windurst Walls | H-7`. Columns are lettered left to right and rows numbered top to bottom, as on the in-game map. It updates as you move.
+
+`/playerstats zone` turns the row on or off. The setting is saved, so it stays the way you left it.
+
+A few things to know about the grid square:
+
+- It's calculated from your position using map data for each zone, and it's accurate in cities and outdoor areas.
+- Dungeons with several map floors (Inner Horutoto Ruins, Garlaige Citadel and the like) only have data for one floor, so the square can be wrong on the others.
+- If the zone has no map, or you're outside the map's grid, the row shows just the zone name.
+
 ## Themes
 
 ![The four themes: dark, parchment, glass and plain](themes.png)
 
-*From left to right: dark, parchment, glass, plain.*
+*Top row: dark, parchment. Bottom row: glass, plain.*
 
 | Theme | Look |
 |---|---|
@@ -110,13 +124,14 @@ If a font isn't installed, the game falls back to a default font. On Linux under
 | `/playerstats bold` | Toggle bold text |
 | `/playerstats outline` | Toggle the text outline |
 | `/playerstats border` | Toggle the box border |
+| `/playerstats zone` | Show or hide the Zone row |
 | `/playerstats pos <x> <y>` | Move the box to an exact position |
 | `/playerstats reset` | Move the box back to 100, 100 |
 | `/playerstats delay <seconds>` | How long to stay hidden after zoning in |
 
 ## Settings
 
-Settings are saved per character by Ashita, under `Ashita/config/addons/playerstats/`. That includes the position, theme, colors, font and zone delay. Deleting the folder resets everything to defaults the next time the addon loads.
+Settings are saved per character by Ashita, under `Ashita/config/addons/playerstats/`. That includes the position, theme, colors, font, zone delay and whether the Zone row is shown. Deleting the folder resets everything to defaults the next time the addon loads.
 
 ### Upgrading from gilexp
 
@@ -131,6 +146,8 @@ Settings are stored by addon name, so the old ones aren't picked up automaticall
 ## Credits
 
 Vibe Coded by Semil with Claude. Built and tested on HorizonXI's Ashita v4 client.
+
+Map calibration data in `zonemaps.lua` comes from [FFXI Atlas](https://github.com/miguelstrife/Electron-FFXI-Atlas) by miguelstrife, used under the ISC license.
 
 ## License
 

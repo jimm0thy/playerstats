@@ -1,13 +1,14 @@
 addon.name    = 'playerstats';
 addon.author  = 'Semil';
-addon.version = '1.3';
-addon.desc    = 'Displays job, level, gil and experience on screen.';
+addon.version = '1.4';
+addon.desc    = 'Displays job, level, gil, experience, zone and map grid square on screen.';
 addon.link    = '';
 
 require('common');
 local fonts      = require('fonts');
 local primitives = require('primitives');
 local settings   = require('settings');
+local zonemaps   = require('zonemaps');
 
 -- ---------------------------------------------------------------------------
 -- Themes
@@ -78,6 +79,7 @@ local THEMES = T{
 
 local default_settings = T{
     zone_delay = 3,          -- seconds to stay hidden after zoning in
+    show_zone  = true,       -- the Zone row (zone name and map grid square)
     visible    = true,
     position_x = 100,
     position_y = 100,
@@ -99,11 +101,13 @@ local playerstats = T{
     press = nil,
 };
 
--- Rows, top to bottom. `key` names the font objects; `label` is the text shown.
+-- Rows, top to bottom. `key` names the font objects; `label` is the text shown;
+-- `setting`, when present, names the on/off setting that shows the row.
 local ROWS = {
-    {key = 'job', label = 'Job'},
-    {key = 'gil', label = 'Gil'},
-    {key = 'exp', label = 'EXP'},
+    {key = 'job',  label = 'Job'},
+    {key = 'gil',  label = 'Gil'},
+    {key = 'exp',  label = 'EXP'},
+    {key = 'zone', label = 'Zone', setting = 'show_zone'},
 };
 
 local SLOP = 3
@@ -152,6 +156,52 @@ local function job_text(player)
         s = s .. (' / %s %d'):fmt(job_abbr(sub), slvl);
     end
     return s;
+end
+
+--[[ Map grid square for a world position, e.g. 'H-7', or nil if the zone has
+     no known map or the position is off the grid. Maps are 256 units across in
+     this space with the grid starting 8 in and each square 16 wide: columns
+     A, B, C... left to right, rows 1, 2, 3... top to bottom. ]]
+local function grid_square(zone, x, y, z)
+    local m = zonemaps[zone];
+    if (m == nil) then return nil; end
+    if (m.maps ~= nil) then
+        -- Several maps: use the first whose box contains the player, else map 1
+        local pick = nil;
+        for _, cand in ipairs(m.maps) do
+            for _, r in ipairs(cand.ranges or {}) do
+                if (x >= r[1] and x <= r[4] and y >= r[2] and y <= r[5] and z >= r[3] and z <= r[6]) then
+                    pick = cand;
+                    break;
+                end
+            end
+            if (pick ~= nil) then break; end
+        end
+        m = pick or m.maps[1];
+    end
+    local px = m.ox + m.s * x;
+    local py = m.oy - m.s * y;
+    local col = math.floor((px - 8) / 16);
+    local row = math.floor((py - 8) / 16) + 1;
+    if (col < 0 or col > 15 or row < 1 or row > 16) then return nil; end
+    return ('%s-%d'):fmt(string.char(65 + col), row);
+end
+
+local function zone_text(zone)
+    local ok, name = pcall(function ()
+        return AshitaCore:GetResourceManager():GetString('zones.names', zone);
+    end);
+    if (not ok or name == nil or name == '') then name = ('Zone %d'):fmt(zone); end
+
+    local ent = GetPlayerEntity();
+    if (ent ~= nil and ent.Movement ~= nil) then
+        local p = ent.Movement.LocalPosition;
+        local sq = grid_square(zone, p.X, p.Y, p.Z);
+        if (sq ~= nil) then
+            return ('%s | %s'):fmt(name, sq);
+        end
+    end
+    return name;
 end
 
 local function texture_path(file)
@@ -232,10 +282,18 @@ local function build()
     end
 end
 
+local function row_on(row)
+    return row.setting == nil or playerstats.settings[row.setting] ~= false;
+end
+
 local function set_visible(v)
     if (playerstats.bg ~= nil) then playerstats.bg.visible = v; end
     if (playerstats.text ~= nil) then
-        for _, f in pairs(playerstats.text) do f.visible = v; end
+        for _, row in ipairs(ROWS) do
+            local on = v and row_on(row);
+            playerstats.text[row.key .. '_l'].visible = on;
+            playerstats.text[row.key .. '_v'].visible = on;
+        end
     end
 end
 
@@ -247,27 +305,28 @@ local function layout()
 
     -- Measure every row: widest label, widest value, tallest line
     local lw, vw, lh = 0, 0, 0;
-    local sizes = {};
-    for _, row in ipairs(ROWS) do
+    local sizes, count = {}, 0;
+    for _, row in ipairs(ROWS) do if row_on(row) then
+        count = count + 1;
         local a, ah = text_size(t[row.key .. '_l']);
         local b, bh = text_size(t[row.key .. '_v']);
         sizes[row.key] = b;
         lw = math.max(lw, a);
         vw = math.max(vw, b);
         lh = math.max(lh, ah, bh);
-    end
+    end end
 
     local right = x0 + pad + lw + GAP + vw;   -- values are right-aligned here
     local y = y0 + pad;
-    for _, row in ipairs(ROWS) do
+    for _, row in ipairs(ROWS) do if row_on(row) then
         local l, v = t[row.key .. '_l'], t[row.key .. '_v'];
         l.position_x, l.position_y = x0 + pad, y;
         v.position_x, v.position_y = right - sizes[row.key], y;
         y = y + lh + LINE_SPACING;
-    end
+    end end
 
     local w = pad * 2 + lw + GAP + vw;
-    local h = pad * 2 + lh * #ROWS + LINE_SPACING * (#ROWS - 1);
+    local h = pad * 2 + lh * count + LINE_SPACING * math.max(count - 1, 0);
     playerstats.bg.position_x, playerstats.bg.position_y = x0, y0;
     playerstats.bg.width, playerstats.bg.height = w, h;
     playerstats.rect = {x = x0, y = y0, w = w, h = h};
@@ -368,6 +427,7 @@ local USAGE = {
     '  /playerstats color <label|value|border|bg> <AARRGGBB or RRGGBB>',
     '  /playerstats texture <file.png|off>   (file goes in playerstats/assets)',
     '  /playerstats font <name>  |  size <n>  |  bold  |  outline  |  border',
+    '  /playerstats zone   (show or hide the Zone row)',
     '  /playerstats pos <x> <y>  |  reset  |  delay <secs>',
 };
 
@@ -411,6 +471,11 @@ ashita.events.register('command', 'playerstats_command', function (e)
     elseif (sub == 'outline') then
         st.outline = not st.outline;
         restyle = true;
+    elseif (sub == 'zone') then
+        playerstats.settings.show_zone = (playerstats.settings.show_zone == false);
+        settings.save();
+        print(('[playerstats] Zone row %s.'):fmt(playerstats.settings.show_zone and 'on' or 'off'));
+        return;
     elseif (sub == 'border') then
         st.border = not st.border;
         restyle = true;
@@ -466,6 +531,9 @@ ashita.events.register('d3d_present', 'playerstats_present', function ()
     local gil     = (gilItem ~= nil) and gilItem.Count or 0;
 
     playerstats.text.job_v.text = job_text(player);
+    if (playerstats.settings.show_zone ~= false) then
+        playerstats.text.zone_v.text = zone_text(zone);
+    end
     playerstats.text.gil_v.text = comma(gil);
     playerstats.text.exp_v.text = ('%s / %s'):fmt(comma(player:GetExpCurrent()), comma(player:GetExpNeeded()));
 
